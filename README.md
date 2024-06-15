@@ -1,1 +1,1 @@
-A simple hello world express server. 
+A simple telegram bot for trading crypto. 
