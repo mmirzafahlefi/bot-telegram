@@ -10,6 +10,11 @@ const bot = new TelegramBot(token, { polling: true });
 // Inisialisasi exchange (misalnya Binance)
 const exchange = new ccxt.binance();
 
+// Fungsi untuk membulatkan harga ke dua desimal
+function roundToTwo(num) {
+    return Math.round(num * 100) / 100;
+}
+
 // Fungsi untuk mendapatkan sinyal trading dengan alasan
 async function getTradingSignal(symbol) {
     const ohlcv = await exchange.fetchOHLCV(symbol, '15m', undefined, 100);
@@ -18,30 +23,37 @@ async function getTradingSignal(symbol) {
     const shortMA = closes.slice(-10).reduce((acc, val) => acc + val, 0) / 10;
     const longMA = closes.slice(-50).reduce((acc, val) => acc + val, 0) / 50;
 
-    let signal, reason;
+    let signal, reason, level;
+
+    // Menentukan support dan resistance
+    const support = Math.min(...closes.slice(-20)); // Contoh sederhana untuk support
+    const resistance = Math.max(...closes.slice(-20)); // Contoh sederhana untuk resistance
+
     if (shortMA > longMA) {
         signal = 'buy';
-        reason = 'Short-term moving average is above long-term moving average, indicating an upward trend.';
+        level = support;
+        reason = `Short-term moving average is above long-term moving average, indicating an upward trend. Consider buying near the support level of ${roundToTwo(support)}`;
     } else if (shortMA < longMA) {
         signal = 'sell';
-        reason = 'Short-term moving average is below long-term moving average, indicating a downward trend.';
+        level = resistance;
+        reason = `Short-term moving average is below long-term moving average, indicating a downward trend. Consider selling near the resistance level of ${roundToTwo(resistance)}`;
     } else {
         signal = 'hold';
         reason = 'Short-term moving average is equal to long-term moving average, indicating no clear trend.';
     }
 
-    return { signal, reason };
+    return { signal, reason, level };
 }
 
 // Fungsi untuk menghitung target profit dan stoploss
 function calculateTargets(price, signal, ratio = 2) {
     let targetProfit, stopLoss;
     if (signal === 'buy') {
-        targetProfit = price * (1 + 0.01 * ratio);
-        stopLoss = price * (1 - 0.01);
+        targetProfit = roundToTwo(price * (1 + 0.01 * ratio));
+        stopLoss = roundToTwo(price * (1 - 0.01));
     } else if (signal === 'sell') {
-        targetProfit = price * (1 - 0.01 * ratio);
-        stopLoss = price * (1 + 0.01);
+        targetProfit = roundToTwo(price * (1 - 0.01 * ratio));
+        stopLoss = roundToTwo(price * (1 + 0.01));
     }
     return { targetProfit, stopLoss };
 }
@@ -52,9 +64,9 @@ bot.onText(/\/signal (.+)/, async (msg, match) => {
     const symbol = match[1].toUpperCase() + '/USD';
 
     try {
-        const { signal, reason } = await getTradingSignal(symbol);
+        const { signal, reason, level } = await getTradingSignal(symbol);
         const ticker = await exchange.fetchTicker(symbol);
-        const currentPrice = ticker.last;
+        const currentPrice = roundToTwo(ticker.last);
         const { targetProfit, stopLoss } = calculateTargets(currentPrice, signal);
 
         if (signal === 'hold') {
@@ -62,7 +74,7 @@ bot.onText(/\/signal (.+)/, async (msg, match) => {
         } else {
             bot.sendMessage(chatId, 
                 `Sinyal untuk ${symbol}: ${signal.toUpperCase()}\n\n` +
-                `Harga Saat Ini: ${currentPrice}\n\n` +
+                `Perkiraan Harga untuk ${signal.toUpperCase()}: ${currentPrice}\n\n s/d ${roundToTwo(level)}\n\n` +
                 `Target Profit: ${targetProfit}\n\n` +
                 `Stoploss: ${stopLoss}\n\n` +
                 `Alasan: ${reason}`
