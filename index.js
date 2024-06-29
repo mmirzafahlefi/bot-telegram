@@ -127,7 +127,6 @@ function calculateWinrate() {
     }
 }
 
-
 // Fungsi untuk mendapatkan sinyal berdasarkan modal
 async function getSignalWithModal(symbol, modal) {
     const { signal, reason, level } = await getTradingSignal(symbol);
@@ -154,58 +153,62 @@ async function getSignalWithModal(symbol, modal) {
     };
 }
 
+// Fungsi untuk menyimpan modal trading
+function saveTradingCapital(chatId, modal) {
+    const filePath = 'trading_capital.json';
+    let capitalData = {};
+
+    // Baca data modal jika file sudah ada
+    if (fs.existsSync(filePath)) {
+        try {
+            const rawCapital = fs.readFileSync(filePath);
+            capitalData = JSON.parse(rawCapital);
+        } catch (error) {
+            console.error('Error reading or parsing trading capital file:', error);
+        }
+    }
+
+    // Simpan modal untuk user tertentu
+    capitalData[chatId] = modal;
+
+    // Simpan kembali ke file
+    try {
+        fs.writeFileSync(filePath, JSON.stringify(capitalData, null, 2));
+    } catch (error) {
+        console.error('Error saving trading capital:', error);
+    }
+}
+
+// Fungsi untuk mendapatkan modal trading user
+function getTradingCapital(chatId) {
+    const filePath = 'trading_capital.json';
+    if (!fs.existsSync(filePath)) {
+        return null;
+    }
+
+    try {
+        const rawCapital = fs.readFileSync(filePath);
+        const capitalData = JSON.parse(rawCapital);
+        return capitalData[chatId] || null;
+    } catch (error) {
+        console.error('Error reading trading capital file:', error);
+        return null;
+    }
+}
+
 // Respon ke command /signal
 bot.onText(/\/signal (.+)/, async (msg, match) => {
     const chatId = msg.chat.id;
     const symbol = match[1].toUpperCase() + '/USD';
 
-    try {
-        const { signal, reason, currentPrice, targetProfit, stopLoss, risk, riskPercentage } = await getTradingSignal(symbol);
-        
-        if (signal === 'hold') {
-            bot.sendMessage(chatId, `Sinyal untuk ${symbol}: Hold\nAlasan: ${reason}`);
-        } else {
-            const signalData = {
-                symbol,
-                signal,
-                currentPrice,
-                targetProfit,
-                stopLoss,
-                reason,
-                risk,
-                riskPercentage,
-                timestamp: new Date().toISOString(),
-                result: 'pending'
-            };
-
-            saveSignalHistory(signalData);
-
-            bot.sendMessage(chatId, 
-                `Sinyal untuk ${symbol}: ${signal.toUpperCase()}\n\n` +
-                `Harga Entry: ${currentPrice}\n\n` + 
-                `Target Profit: ${targetProfit}\n\n` +
-                `Stoploss: ${stopLoss}\n\n` +
-                `Alasan: ${reason}\n\n` +
-                `Risk: ${risk.toUpperCase()} (${riskPercentage}%)`
-            );
-        }
-    } catch (error) {
-        bot.sendMessage(chatId, `Terjadi kesalahan: ${error.message}`);
-    }
-});
-
-// Respon ke command /modal
-bot.onText(/\/modal (\d+)/, async (msg, match) => {
-    const chatId = msg.chat.id;
-    const modal = parseFloat(match[1]);
-
-    if (isNaN(modal) || modal <= 0) {
-        bot.sendMessage(chatId, 'Mohon masukkan nilai modal yang valid.');
+    // Dapatkan modal trading user
+    const modal = getTradingCapital(chatId);
+    if (!modal) {
+        bot.sendMessage(chatId, 'Mohon set modal terlebih dahulu dengan perintah /modal.');
         return;
     }
 
     try {
-        const symbol = 'BTC/USDT'; // Anda bisa mengubah ini sesuai kebutuhan
         const { signal, reason, currentPrice, targetProfit, stopLoss, positionSize, risk, riskPercentage } = await getSignalWithModal(symbol, modal);
 
         if (signal === 'hold') {
@@ -232,13 +235,25 @@ bot.onText(/\/modal (\d+)/, async (msg, match) => {
                 `Harga Entry: ${currentPrice}\n\n` + 
                 `Target Profit: ${targetProfit}\n\n` +
                 `Stoploss: ${stopLoss}\n\n` +
-                `Ukuran Posisi: ${positionSize} unit\n\n` +
                 `Alasan: ${reason}\n\n` +
                 `Risk: ${risk.toUpperCase()} (${riskPercentage}%)`
             );
         }
     } catch (error) {
         bot.sendMessage(chatId, `Terjadi kesalahan: ${error.message}`);
+    }
+});
+
+// Respon ke command /modal
+bot.onText(/\/modal (.+)/, (msg, match) => {
+    const chatId = msg.chat.id;
+    const modal = parseFloat(match[1]);
+
+    if (isNaN(modal) || modal <= 0) {
+        bot.sendMessage(chatId, 'Mohon masukkan modal yang valid.');
+    } else {
+        saveTradingCapital(chatId, modal);
+        bot.sendMessage(chatId, `Modal trading telah diset ke ${modal} USD.`);
     }
 });
 
