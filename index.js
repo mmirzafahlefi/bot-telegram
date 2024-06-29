@@ -3,7 +3,7 @@ const ccxt = require('ccxt');
 const fs = require('fs');
 
 // Ganti dengan token API bot Telegram Anda
-const token = '7462089524:AAHTs939Z-dwM7hh6KPbbMY1k0vj77FhbYA';
+const token = '7462089524:AAGlAHc5UUIQM8TJWQZQlXW8YrYmgYVDNG8';
 
 // Inisialisasi bot Telegram
 const bot = new TelegramBot(token, { polling: true });
